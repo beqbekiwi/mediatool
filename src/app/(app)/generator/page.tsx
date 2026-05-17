@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import {
   Wand2, Save, RefreshCw, Copy, Check, ChevronDown, ChevronUp,
   CalendarDays, Lightbulb, Image as ImageIcon, Sparkles, Loader2,
+  Layers, StickerIcon,
 } from 'lucide-react'
 import { clsx } from 'clsx'
 import {
@@ -54,6 +55,10 @@ export default function GeneratorPage() {
   const [generatingImage, setGeneratingImage] = useState(false)
   const [generatedImageUrl, setGeneratedImageUrl] = useState<string | null>(null)
   const [imageError, setImageError] = useState('')
+  const [compositingImage, setCompositingImage] = useState(false)
+  const [overlayingLogo, setOverlayingLogo] = useState(false)
+  const [logoPosition, setLogoPosition] = useState('bottom-right')
+  const [logoScale, setLogoScale] = useState('0.25')
 
   useEffect(() => {
     fetch('/api/accounts').then(r => r.json()).then(data => {
@@ -89,6 +94,50 @@ export default function GeneratorPage() {
     setEditedContent(s.content)
     setGeneratedImageUrl(null)
     setImageError('')
+  }
+
+  async function compositeImage(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file || !generatedImageUrl) return
+    e.target.value = ''
+    setCompositingImage(true)
+    setImageError('')
+    try {
+      const fd = new FormData()
+      fd.append('baseImageUrl', generatedImageUrl)
+      fd.append('file', file)
+      const res = await fetch('/api/generate/image/edit', { method: 'POST', body: fd })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+      setGeneratedImageUrl(data.url)
+    } catch (e) {
+      setImageError(String(e))
+    } finally {
+      setCompositingImage(false)
+    }
+  }
+
+  async function overlayLogo(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file || !generatedImageUrl) return
+    e.target.value = ''
+    setOverlayingLogo(true)
+    setImageError('')
+    try {
+      const fd = new FormData()
+      fd.append('baseImageUrl', generatedImageUrl)
+      fd.append('file', file)
+      fd.append('position', logoPosition)
+      fd.append('scale', logoScale)
+      const res = await fetch('/api/media/overlay', { method: 'POST', body: fd })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+      setGeneratedImageUrl(data.url)
+    } catch (e) {
+      setImageError(String(e))
+    } finally {
+      setOverlayingLogo(false)
+    }
   }
 
   async function generateImage() {
@@ -319,8 +368,61 @@ export default function GeneratorPage() {
                     <p className="text-xs text-slate-600 mb-3">{selected.imageIdea}</p>
                     {imageError && <p className="text-xs text-red-600 mt-2">{imageError}</p>}
                     {generatedImageUrl && (
-                      <div className="mt-2 rounded-lg overflow-hidden border border-slate-200">
-                        <img src={generatedImageUrl} alt="KI-generiertes Bild" className="w-full object-cover" />
+                      <div className="mt-2 space-y-3">
+                        <div className="rounded-lg overflow-hidden border border-slate-200">
+                          <img src={generatedImageUrl} alt="KI-generiertes Bild" className="w-full object-cover" />
+                        </div>
+
+                        {/* Compositing actions */}
+                        <div className="border border-slate-200 rounded-lg p-3 space-y-3 bg-slate-50">
+                          <p className="text-xs font-semibold text-slate-600">Bild anpassen</p>
+
+                          {/* AI composite */}
+                          <div className="flex items-center gap-2">
+                            <label className={clsx(
+                              'flex items-center gap-1.5 text-xs cursor-pointer px-2.5 py-1.5 rounded-lg border transition-colors',
+                              compositingImage
+                                ? 'opacity-50 pointer-events-none border-slate-200 text-slate-400'
+                                : 'border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100'
+                            )}>
+                              {compositingImage
+                                ? <><Loader2 className="w-3 h-3 animate-spin" /> KI kombiniert…</>
+                                : <><Layers className="w-3 h-3" /> Screenshot einsetzen (KI)</>}
+                              <input type="file" accept="image/*" className="hidden" onChange={compositeImage} disabled={compositingImage} />
+                            </label>
+                            <span className="text-xs text-slate-400 hidden sm:inline">KI platziert dein Bild ins generierte Motiv</span>
+                          </div>
+
+                          {/* Sharp logo overlay */}
+                          <div className="space-y-2">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <select className="select text-xs py-1 px-2 h-auto" value={logoPosition} onChange={e => setLogoPosition(e.target.value)}>
+                                <option value="bottom-right">Unten rechts</option>
+                                <option value="bottom-left">Unten links</option>
+                                <option value="top-right">Oben rechts</option>
+                                <option value="top-left">Oben links</option>
+                                <option value="center">Mitte</option>
+                              </select>
+                              <select className="select text-xs py-1 px-2 h-auto" value={logoScale} onChange={e => setLogoScale(e.target.value)}>
+                                <option value="0.1">10% Größe</option>
+                                <option value="0.15">15% Größe</option>
+                                <option value="0.25">25% Größe</option>
+                                <option value="0.35">35% Größe</option>
+                              </select>
+                              <label className={clsx(
+                                'flex items-center gap-1.5 text-xs cursor-pointer px-2.5 py-1.5 rounded-lg border transition-colors',
+                                overlayingLogo
+                                  ? 'opacity-50 pointer-events-none border-slate-200 text-slate-400'
+                                  : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-100'
+                              )}>
+                                {overlayingLogo
+                                  ? <><Loader2 className="w-3 h-3 animate-spin" /> Füge hinzu…</>
+                                  : <><StickerIcon className="w-3 h-3" /> Logo hinzufügen</>}
+                                <input type="file" accept="image/*" className="hidden" onChange={overlayLogo} disabled={overlayingLogo} />
+                              </label>
+                            </div>
+                          </div>
+                        </div>
                       </div>
                     )}
                   </div>
