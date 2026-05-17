@@ -66,6 +66,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ suggestions })
   } catch (e) {
     console.error('[generate/post]', e)
-    return NextResponse.json({ error: 'KI-Generierung fehlgeschlagen' }, { status: 500 })
+    const msg = e instanceof Error ? e.message : String(e)
+    return NextResponse.json({ error: `KI-Generierung fehlgeschlagen: ${msg}` }, { status: 500 })
   }
 }
