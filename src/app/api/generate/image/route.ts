@@ -3,8 +3,9 @@ import { getSession } from '@/lib/auth'
 import { getUserWorkspaces } from '@/lib/workspace'
 import { db } from '@/lib/db'
 import { put } from '@vercel/blob'
-import { experimental_generateImage as generateImage } from 'ai'
-import { openai } from '@ai-sdk/openai'
+import OpenAI from 'openai'
+
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
 
 function sizeForPlatform(platform: string): '1024x1024' | '1792x1024' | '1024x1792' {
   if (platform === 'instagram') return '1024x1024'
@@ -27,32 +28,38 @@ export async function POST(req: NextRequest) {
     const size = sizeForPlatform(platform)
     const [w, h] = size.split('x').map(Number)
 
-    const { image } = await generateImage({
-      model: openai.image('dall-e-3'),
-      prompt: `Social media image for ${platform}. ${prompt}. Professional, high quality, suitable for business social media.`,
+    const response = await openai.images.generate({
+      model: 'dall-e-3',
+      prompt: `Social media post image for ${platform}. ${prompt}. Professional, high quality, suitable for business social media. No text overlays.`,
+      n: 1,
       size,
-      providerOptions: { openai: { quality: 'standard' } },
+      quality: 'standard',
     })
+
+    const imageUrl = response.data[0]?.url
+    if (!imageUrl) throw new Error('Kein Bild generiert')
 
     const filename = `ai-generated-${Date.now()}.png`
 
-    let blobUrl: string
+    // Download and store permanently
+    let storedUrl: string
     if (process.env.BLOB_READ_WRITE_TOKEN) {
-      const blob = await put(`media/${workspaceId}/${filename}`, Buffer.from(image.uint8Array), {
+      const imgBuffer = await fetch(imageUrl).then(r => r.arrayBuffer())
+      const blob = await put(`media/${workspaceId}/${filename}`, Buffer.from(imgBuffer), {
         access: 'public',
         contentType: 'image/png',
       })
-      blobUrl = blob.url
+      storedUrl = blob.url
     } else {
-      // Fallback: embed as data URL (works without Blob storage)
-      blobUrl = `data:image/png;base64,${image.base64}`
+      // Without Blob: use OpenAI URL directly (expires after ~1h, ok for testing)
+      storedUrl = imageUrl
     }
 
     const media = await db.media.create({
       data: {
         workspaceId,
         type: 'image',
-        url: blobUrl,
+        url: storedUrl,
         filename,
         mimeType: 'image/png',
         width: w,
@@ -69,7 +76,7 @@ export async function POST(req: NextRequest) {
       })
     }
 
-    return NextResponse.json({ media, url: blobUrl }, { status: 201 })
+    return NextResponse.json({ media, url: storedUrl }, { status: 201 })
   } catch (e: unknown) {
     console.error('[generate/image]', e)
     const msg = e instanceof Error ? e.message : 'Unbekannter Fehler'
