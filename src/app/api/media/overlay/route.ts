@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
     const logoBuffer = Buffer.from(await file.arrayBuffer())
     const targetWidth = Math.round(bw * scale)
     const resizedLogo = await sharp(logoBuffer)
-      .resize(targetWidth, undefined, { fit: 'inside', withoutEnlargement: false })
+      .resize({ width: targetWidth, withoutEnlargement: true })
       .ensureAlpha()
       .toBuffer()
 
