@@ -7,9 +7,9 @@ import OpenAI from 'openai'
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
 
-function sizeForPlatform(platform: string): '1024x1024' | '1792x1024' | '1024x1792' {
+function sizeForPlatform(platform: string): '1024x1024' | '1536x1024' | '1024x1536' {
   if (platform === 'instagram') return '1024x1024'
-  if (platform === 'linkedin') return '1792x1024'
+  if (platform === 'linkedin') return '1536x1024'
   return '1024x1024'
 }
 
@@ -29,30 +29,44 @@ export async function POST(req: NextRequest) {
     const [w, h] = size.split('x').map(Number)
 
     const response = await openai.images.generate({
-      model: 'dall-e-3',
+      model: 'gpt-image-1',
       prompt: `Social media post image for ${platform}. ${prompt}. Professional, high quality, suitable for business social media. No text overlays.`,
       n: 1,
       size,
       quality: 'standard',
     })
 
-    const imageUrl = response.data?.[0]?.url
-    if (!imageUrl) throw new Error('Kein Bild generiert')
+    const item = response.data?.[0]
+    if (!item) throw new Error('Kein Bild generiert')
 
+    // gpt-image-1 returns b64_json, dall-e-3 returns url
+    const b64 = item.b64_json
     const filename = `ai-generated-${Date.now()}.png`
 
-    // Download and store permanently
     let storedUrl: string
-    if (process.env.BLOB_READ_WRITE_TOKEN) {
-      const imgBuffer = await fetch(imageUrl).then(r => r.arrayBuffer())
-      const blob = await put(`media/${workspaceId}/${filename}`, Buffer.from(imgBuffer), {
-        access: 'public',
-        contentType: 'image/png',
-      })
-      storedUrl = blob.url
+    if (b64) {
+      const buffer = Buffer.from(b64, 'base64')
+      if (process.env.BLOB_READ_WRITE_TOKEN) {
+        const blob = await put(`media/${workspaceId}/${filename}`, buffer, {
+          access: 'public',
+          contentType: 'image/png',
+        })
+        storedUrl = blob.url
+      } else {
+        storedUrl = `data:image/png;base64,${b64}`
+      }
     } else {
-      // Without Blob: use OpenAI URL directly (expires after ~1h, ok for testing)
-      storedUrl = imageUrl
+      const imageUrl = item.url!
+      if (process.env.BLOB_READ_WRITE_TOKEN) {
+        const imgBuffer = await fetch(imageUrl).then(r => r.arrayBuffer())
+        const blob = await put(`media/${workspaceId}/${filename}`, Buffer.from(imgBuffer), {
+          access: 'public',
+          contentType: 'image/png',
+        })
+        storedUrl = blob.url
+      } else {
+        storedUrl = imageUrl
+      }
     }
 
     const media = await db.media.create({
