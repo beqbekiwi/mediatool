@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
       prompt: `Social media post image for ${platform}. ${prompt}. Professional, high quality, suitable for business social media. No text overlays.`,
       n: 1,
       size,
-      quality: 'standard',
+      quality: 'medium',
     })
 
     const item = response.data?.[0]
