@@ -1,0 +1,239 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+// ─── Auth ────────────────────────────────────────────────────────────────────
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  password  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  memberships WorkspaceMember[]
+  sessions    Session[]
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+}
+
+// ─── Workspace / Multi-Tenant ─────────────────────────────────────────────────
+
+model Workspace {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  type      String   @default("business") // personal | business
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  members        WorkspaceMember[]
+  brandProfile   BrandProfile?
+  socialAccounts SocialAccount[]
+  posts          Post[]
+  media          Media[]
+  contentThemes  ContentTheme[]
+}
+
+model WorkspaceMember {
+  id          String   @id @default(cuid())
+  workspaceId String
+  userId      String
+  role        String   @default("owner") // owner | admin | editor | viewer
+  createdAt   DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, userId])
+}
+
+// ─── Brand Profile ────────────────────────────────────────────────────────────
+
+model BrandProfile {
+  id          String    @id @default(cuid())
+  workspaceId String    @unique
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  name            String
+  description     String?
+  industry        String?
+  targetAudience  String?
+  tonality        String  @default("professional")
+  language        String  @default("de")
+  addressingStyle String  @default("Sie") // Du | Sie
+  useEmojis       Boolean @default(false)
+  hashtagStyle    String?
+  website         String?
+  logoUrl         String?
+  noGos           String  @default("[]") // JSON String[]
+  preferredTerms  String  @default("[]") // JSON String[]
+  avoidedTerms    String  @default("[]") // JSON String[]
+  exampleTexts    String  @default("[]") // JSON String[]
+  postingGoals    String  @default("[]") // JSON String[] – gewählte Themenbereiche
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ─── Social Accounts ──────────────────────────────────────────────────────────
+
+model SocialAccount {
+  id          String    @id @default(cuid())
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  platform       String  // linkedin | facebook | instagram | tiktok
+  accountType    String  @default("personal") // personal | page | business
+  accountName    String
+  accountId      String
+  accessToken    String
+  refreshToken   String?
+  tokenExpiresAt DateTime?
+  pageId         String?  // Facebook Page ID
+  igUserId       String?  // Instagram Business User ID
+  metadata       String?  // JSON – plattformspezifische Extras
+  connected      Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  posts Post[]
+
+  @@unique([workspaceId, platform, accountId])
+}
+
+// ─── Content Strategy ─────────────────────────────────────────────────────────
+
+model ContentTheme {
+  id          String    @id @default(cuid())
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  title       String
+  description String?
+  category    String
+  keywords    String  @default("[]") // JSON String[]
+  active      Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  ideas ContentIdea[]
+}
+
+model ContentIdea {
+  id      String       @id @default(cuid())
+  themeId String
+  theme   ContentTheme @relation(fields: [themeId], references: [id], onDelete: Cascade)
+
+  platform    String @default("general") // general | facebook | instagram | linkedin
+  format      String
+  hook        String
+  coreMessage String
+  value       String
+  cta         String
+  targetGroup String
+  imageIdea   String?
+  videoIdea   String?
+  status      String @default("idea") // idea | in_progress | used
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  posts Post[]
+}
+
+// ─── Posts ────────────────────────────────────────────────────────────────────
+
+model Post {
+  id              String         @id @default(cuid())
+  workspaceId     String
+  workspace       Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  socialAccountId String?
+  socialAccount   SocialAccount? @relation(fields: [socialAccountId], references: [id])
+  ideaId          String?
+  idea            ContentIdea?   @relation(fields: [ideaId], references: [id])
+
+  title       String
+  content     String
+  hook        String?
+  cta         String?
+  platform    String @default("facebook") // facebook | instagram | linkedin | tiktok
+  contentType String @default("text")     // text | image | video | reel | story | carousel
+  format      String @default("standard")
+  style       String @default("professional")
+  targetGroup String @default("general")
+  hashtags    String @default("[]") // JSON String[]
+  firstComment String?
+  notes       String?
+  imageIdea   String?
+  videoIdea   String?
+
+  // Publishing
+  status         String    @default("draft")
+  // draft | review | approved | scheduled | publishing | published | failed
+  autoPublish    Boolean   @default(false)
+  scheduledAt    DateTime?
+  publishedAt    DateTime?
+  platformPostId String?
+  publishError   String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  mediaItems PostMedia[]
+}
+
+// ─── Media ────────────────────────────────────────────────────────────────────
+
+model Media {
+  id          String    @id @default(cuid())
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  type        String  // image | video
+  url         String  // Vercel Blob URL
+  thumbnail   String? // Video-Vorschaubild
+  filename    String
+  filesize    Int?    // bytes
+  mimeType    String?
+  width       Int?
+  height      Int?
+  duration    Int?    // Sekunden (Video)
+  aspectRatio String? // 1:1 | 9:16 | 16:9 | 4:5
+  source      String  @default("upload") // upload | ai-dalle | ai-runway
+  aiPrompt    String?
+  tags        String  @default("[]") // JSON String[]
+  description String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  posts PostMedia[]
+}
+
+model PostMedia {
+  id      String @id @default(cuid())
+  postId  String
+  mediaId String
+  order   Int    @default(0)
+
+  post  Post  @relation(fields: [postId], references: [id], onDelete: Cascade)
+  media Media @relation(fields: [mediaId], references: [id], onDelete: Cascade)
+
+  @@unique([postId, mediaId])
+}
